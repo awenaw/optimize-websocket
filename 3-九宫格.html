@@ -1,0 +1,2078 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>WebSocket H264 Player - 远程桌面控制 (9宫格模式)</title>
+  <script src="https://cdn.jsdelivr.net/npm/jmuxer/dist/jmuxer.min.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+
+<body>
+  <!-- 顶部导航栏 -->
+  <div class="header">
+    <div class="header-content">
+      <h1><i class="fas fa-desktop"></i> 远程桌面控制台</h1>
+      <div class="header-actions">
+        <button id="viewModeBtn" class="btn btn-info" onclick="toggleViewMode()">
+          <i class="fas fa-th"></i> <span id="viewModeText">切换到9宫格</span>
+        </button>
+        <button id="addStreamBtn" class="btn btn-success" onclick="addNewStream()">
+          <i class="fas fa-plus"></i> 添加设备
+        </button>
+        <button id="removeStreamBtn" class="btn btn-warning" onclick="removeLastStream()">
+          <i class="fas fa-minus"></i> 移除设备
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主要内容区域 -->
+  <div class="container">
+    <!-- 单视图模式 -->
+    <div id="singleView" class="single-view">
+      <div class="main-grid">
+        <!-- 左侧配置面板 -->
+        <div class="sidebar">
+          <div class="config-panel">
+            <div class="config-card">
+              <h3><i class="fas fa-cog"></i> 连接配置</h3>
+              <div class="config-form">
+                <div class="config-item">
+                  <label for="serverIp">服务器地址:</label>
+                  <input type="text" id="serverIp" value="192.168.3.233" placeholder="IP地址或域名">
+                </div>
+                <div class="config-item">
+                  <label for="corpId">企业ID:</label>
+                  <input type="text" id="corpId" value="00000204" placeholder="企业ID">
+                </div>
+                <div class="config-item">
+                  <label for="deviceCode">设备编码:</label>
+                  <input type="text" id="deviceCode" value="ZHDP5828375502" placeholder="设备编码">
+                </div>
+                <div class="config-item">
+                  <label for="watcherId">巡检人ID:</label>
+                  <input type="text" id="watcherId" value="233" placeholder="巡检人ID">
+                </div>
+                <div class="config-item">
+                  <label for="watcherNm">巡检人名称:</label>
+                  <input type="text" id="watcherNm" value="lisa" placeholder="巡检人名称">
+                </div>
+                <div class="config-item">
+                  <label for="scaling">缩放比例:</label>
+                  <input type="text" id="scaling" value="0.1" placeholder="缩放比例">
+                </div>
+                <div class="config-item">
+                  <label for="streamType">流类型:</label>
+                  <select id="streamType">
+                    <option value="2">摄像头流</option>
+                    <option value="1">桌面流</option>
+                  </select>
+                </div>
+              </div>
+              <div class="config-actions">
+                <button id="connectBtn" class="btn btn-primary" onclick="connectSingle()">
+                  <i class="fas fa-plug"></i> 连接
+                </button>
+                <button id="disconnectBtn" class="btn btn-secondary" onclick="disconnectSingle()">
+                  <i class="fas fa-plug-circle-xmark"></i> 断开
+                </button>
+              </div>
+            </div>
+
+            <!-- 连接状态卡片 -->
+            <div class="status-card">
+              <div class="status-indicator">
+                <div id="statusDot" class="status-dot disconnected"></div>
+                <span id="statusText" class="status-text">未连接</span>
+              </div>
+              <div class="connection-info">
+                <div id="currentUrl">当前连接: 未配置</div>
+              </div>
+            </div>
+
+            <!-- 统计数据面板 -->
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-exchange-alt"></i></div>
+                <div class="stat-content">
+                  <div class="stat-value" id="dataReceived">0 KB</div>
+                  <div class="stat-label">数据接收</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-clock"></i></div>
+                <div class="stat-content">
+                  <div class="stat-value" id="connectionTime">00:00</div>
+                  <div class="stat-label">连接时长</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-tachometer-alt"></i></div>
+                <div class="stat-content">
+                  <div class="stat-value" id="frameRate">0 FPS</div>
+                  <div class="stat-label">帧率</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-mouse"></i></div>
+                <div class="stat-content">
+                  <div class="stat-value" id="mouseEvents">0</div>
+                  <div class="stat-label">鼠标事件</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧主要内容 -->
+        <div class="main-content">
+          <!-- 视频播放器区域 -->
+          <div class="player-container">
+            <div class="player-wrapper">
+              <video id="player" autoplay muted>
+                您的浏览器不支持 video 标签
+              </video>
+              <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+                <div class="loading-spinner"></div>
+                <p>正在连接...</p>
+              </div>
+              <div id="placeholderOverlay" class="placeholder-overlay">
+                <div class="placeholder-content">
+                  <i class="fas fa-desktop placeholder-icon"></i>
+                  <p>请配置连接参数并点击连接按钮</p>
+                </div>
+              </div>
+              <div class="player-controls">
+                <div class="control-info">
+                  <span id="resolution">分辨率: --</span>
+                  <span id="latency">延迟: -- ms</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 实时日志面板 -->
+          <div class="log-panel">
+            <div class="log-header">
+              <h3><i class="fas fa-list-ul"></i> 实时日志</h3>
+              <button class="btn btn-small" onclick="clearLogs()">
+                <i class="fas fa-trash"></i> 清空
+              </button>
+            </div>
+            <div id="logContainer" class="log-container">
+              <!-- 日志将在这里显示 -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 9宫格视图模式 -->
+    <div id="gridView" class="grid-view" style="display: none;">
+      <div class="grid-container">
+        <!-- 9宫格播放器将在这里动态生成 -->
+      </div>
+      
+      <!-- 9宫格模式的控制面板 -->
+      <div class="grid-control-panel">
+        <div class="grid-config">
+          <h3><i class="fas fa-cogs"></i> 设备配置模板</h3>
+          <div class="template-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label>服务器地址:</label>
+                <input type="text" id="templateServerIp" value="192.168.3.233">
+              </div>
+              <div class="form-group">
+                <label>企业ID:</label>
+                <input type="text" id="templateCorpId" value="00000204">
+              </div>
+              <div class="form-group">
+                <label>巡检人ID:</label>
+                <input type="text" id="templateWatcherId" value="233">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>巡检人名称:</label>
+                <input type="text" id="templateWatcherNm" value="lisa">
+              </div>
+              <div class="form-group">
+                <label>缩放比例:</label>
+                <input type="text" id="templateScaling" value="0.1">
+              </div>
+              <div class="form-group">
+                <label>流类型:</label>
+                <select id="templateStreamType">
+                  <option value="2">摄像头流</option>
+                  <option value="1">桌面流</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          
+          <div class="grid-actions">
+            <button class="btn btn-primary" onclick="connectAllStreams()">
+              <i class="fas fa-play"></i> 连接所有设备
+            </button>
+            <button class="btn btn-secondary" onclick="disconnectAllStreams()">
+              <i class="fas fa-stop"></i> 断开所有连接
+            </button>
+            <button class="btn btn-info" onclick="autoConfigureDevices()">
+              <i class="fas fa-magic"></i> 自动配置设备
+            </button>
+          </div>
+        </div>
+        
+        <!-- 网格统计信息 -->
+        <div class="grid-stats">
+          <div class="stat-item">
+            <span class="stat-label">活跃连接:</span>
+            <span id="activeConnections" class="stat-value">0/9</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">总数据量:</span>
+            <span id="totalDataReceived" class="stat-value">0 KB</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">平均帧率:</span>
+            <span id="averageFrameRate" class="stat-value">0 FPS</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 键码映射
+    const keyToVKMap = {
+      '0': 0x30, '1': 0x31, '2': 0x32, '3': 0x33, '4': 0x34,
+      '5': 0x35, '6': 0x36, '7': 0x37, '8': 0x38, '9': 0x39,
+      'a': 0x41, 'b': 0x42, 'c': 0x43, 'd': 0x44, 'e': 0x45,
+      'f': 0x46, 'g': 0x47, 'h': 0x48, 'i': 0x49, 'j': 0x4A,
+      'Enter': 0x0D, 'Escape': 0x1B, 'Space': 0x20,
+      'ArrowUp': 0x26, 'ArrowDown': 0x28, 'ArrowLeft': 0x25, 'ArrowRight': 0x27
+    };
+
+    function getVKCode(key) {
+      return keyToVKMap[key] || key.charCodeAt(0) || 0;
+    }
+
+    // 全局变量
+    let currentViewMode = 'single'; // 'single' 或 'grid'
+    let gridStreams = []; // 存储9宫格中的流信息
+    let maxStreams = 9; // 最大流数量
+    
+    // 单视图模式变量
+    let singleJmuxer, singleWs;
+    let isConnecting = false;
+    let singleStats = {
+      dataReceived: 0,
+      connectionStartTime: null,
+      frameCount: 0,
+      mouseEvents: 0,
+      lastFrameTime: Date.now()
+    };
+
+    // 初始化网格流
+    function initializeGridStreams() {
+      gridStreams = [];
+      for (let i = 0; i < maxStreams; i++) {
+        gridStreams.push({
+          id: i,
+          jmuxer: null,
+          ws: null,
+          isConnected: false,
+          isConnecting: false,
+          config: {
+            serverIp: '192.168.3.233',
+            corpId: '00000204',
+            deviceCode: 'ZHDP5828375502', // 所有设备都使用相同的设备编码
+            watcherId: '233',
+            watcherNm: 'lisa',
+            scaling: '0.1',
+            streamType: '2'
+          },
+          stats: {
+            dataReceived: 0,
+            connectionStartTime: null,
+            frameCount: 0,
+            lastFrameTime: Date.now()
+          }
+        });
+      }
+    }
+
+    // 切换视图模式
+    function toggleViewMode() {
+      const singleView = document.getElementById('singleView');
+      const gridView = document.getElementById('gridView');
+      const viewModeText = document.getElementById('viewModeText');
+      
+      if (currentViewMode === 'single') {
+        // 切换到9宫格模式
+        currentViewMode = 'grid';
+        singleView.style.display = 'none';
+        gridView.style.display = 'block';
+        viewModeText.textContent = '切换到单视图';
+        
+        // 断开单视图连接
+        disconnectSingle();
+        
+        // 初始化9宫格
+        initializeGridView();
+        addLog('info', '切换到9宫格模式');
+      } else {
+        // 切换到单视图模式
+        currentViewMode = 'single';
+        singleView.style.display = 'block';
+        gridView.style.display = 'none';
+        viewModeText.textContent = '切换到9宫格';
+        
+        // 断开所有9宫格连接
+        disconnectAllStreams();
+        addLog('info', '切换到单视图模式');
+      }
+    }
+
+    // 初始化9宫格视图
+    function initializeGridView() {
+      const gridContainer = document.querySelector('.grid-container');
+      gridContainer.innerHTML = '';
+      
+      for (let i = 0; i < maxStreams; i++) {
+        const playerElement = document.createElement('div');
+        playerElement.className = 'grid-player';
+        playerElement.innerHTML = `
+          <div class="grid-player-wrapper">
+            <video id="gridPlayer${i}" autoplay muted>
+              您的浏览器不支持 video 标签
+            </video>
+            <div class="grid-overlay">
+              <div class="grid-placeholder">
+                <i class="fas fa-desktop"></i>
+                <span>设备 ${i + 1}</span>
+              </div>
+              <div class="grid-loading" style="display: none;">
+                <div class="mini-spinner"></div>
+              </div>
+            </div>
+            <div class="grid-controls">
+              <div class="grid-info">
+                <span class="device-name">设备${i + 1}</span>
+                <span class="device-code" id="deviceCode${i}">ZHDP5828375502</span>
+                <span class="connection-status" data-stream="${i}">未连接</span>
+              </div>
+              <div class="grid-actions">
+                <button class="grid-btn connect-btn" onclick="connectGridStream(${i})" title="连接设备">
+                  <i class="fas fa-plug"></i>
+                </button>
+                <button class="grid-btn disconnect-btn" onclick="disconnectGridStream(${i})" title="断开连接">
+                  <i class="fas fa-times"></i>
+                </button>
+                <button class="grid-btn config-btn" onclick="configureGridStream(${i})" title="配置设备">
+                  <i class="fas fa-cog"></i>
+                </button>
+              </div>
+            </div>
+                <button class="grid-btn connect-btn" onclick="connectGridStream(${i})">
+                  <i class="fas fa-plug"></i>
+                </button>
+                <button class="grid-btn disconnect-btn" onclick="disconnectGridStream(${i})">
+                  <i class="fas fa-times"></i>
+                </button>
+                <button class="grid-btn config-btn" onclick="configureGridStream(${i})">
+                  <i class="fas fa-cog"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+        gridContainer.appendChild(playerElement);
+        
+        // 添加点击事件监听器
+        addGridPlayerEventListeners(i);
+      }
+    }
+
+    // 为网格播放器添加事件监听器
+    function addGridPlayerEventListeners(streamId) {
+      const videoElement = document.getElementById(`gridPlayer${streamId}`);
+      
+      // 鼠标移动
+      videoElement.addEventListener('mousemove', (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        
+        const stream = gridStreams[streamId];
+        if (stream.ws && stream.ws.readyState === WebSocket.OPEN) {
+          stream.ws.send(JSON.stringify({
+            Button: 0,
+            MousePoint: {
+              X: (event.offsetX / videoElement.offsetWidth) * 65535,
+              Y: (event.offsetY / videoElement.offsetHeight) * 65535,
+            },
+            Input: 2,
+            Delta: 0,
+            Key: 0,
+          }));
+        }
+      });
+
+      // 鼠标按下
+      videoElement.addEventListener('mousedown', (event) => {
+        videoElement.focus();
+        event.stopPropagation();
+        event.preventDefault();
+        
+        const stream = gridStreams[streamId];
+        if (stream.ws && stream.ws.readyState === WebSocket.OPEN) {
+          stream.ws.send(JSON.stringify({
+            Button: event.button,
+            MousePoint: {
+              X: (event.clientX / videoElement.offsetWidth) * 65535,
+              Y: (event.clientY / videoElement.offsetHeight) * 65535,
+            },
+            Input: 1,
+            Delta: 0,
+            Key: 0,
+          }));
+        }
+      });
+
+      // 其他事件监听器...
+      videoElement.addEventListener('mouseup', (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        
+        const stream = gridStreams[streamId];
+        if (stream.ws && stream.ws.readyState === WebSocket.OPEN) {
+          stream.ws.send(JSON.stringify({
+            Button: event.button,
+            MousePoint: {
+              X: (event.offsetX / videoElement.offsetWidth) * 65535,
+              Y: (event.offsetY / videoElement.offsetHeight) * 65535,
+            },
+            Input: 0,
+            Delta: 0,
+            Key: 0,
+          }));
+        }
+      });
+
+      videoElement.addEventListener('contextmenu', (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+      });
+    }
+
+    // 连接网格流
+    function connectGridStream(streamId) {
+      const stream = gridStreams[streamId];
+      if (stream.isConnecting || stream.isConnected) {
+        addLog('warning', `设备${streamId + 1}正在连接或已连接`);
+        return;
+      }
+
+      stream.isConnecting = true;
+      updateGridStreamStatus(streamId, 'connecting', '连接中...');
+      showGridLoading(streamId, true);
+
+      const config = stream.config;
+      const wsUrl = `ws://${config.serverIp}/wsflow/ServerHub?corpId=${config.corpId}&deviceCode=${config.deviceCode}&type=${config.streamType}&Scaling=${config.scaling}&watcherId=${config.watcherId}&watcherNm=${config.watcherNm}`;
+
+      // 初始化JMuxer
+      stream.jmuxer = new JMuxer({
+        node: `gridPlayer${streamId}`,
+        mode: 'video',
+      });
+
+      // 建立WebSocket连接
+      stream.ws = new WebSocket(wsUrl);
+      stream.ws.binaryType = 'arraybuffer';
+
+      stream.ws.onopen = () => {
+        stream.isConnecting = false;
+        stream.isConnected = true;
+        stream.stats.connectionStartTime = Date.now();
+        updateGridStreamStatus(streamId, 'connected', '已连接');
+        showGridLoading(streamId, false);
+        addLog('success', `设备${streamId + 1}连接成功`);
+        updateGridStats();
+      };
+
+      stream.ws.onerror = (error) => {
+        stream.isConnecting = false;
+        updateGridStreamStatus(streamId, 'error', '连接错误');
+        showGridLoading(streamId, false);
+        addLog('error', `设备${streamId + 1}连接失败`);
+      };
+
+      stream.ws.onclose = (event) => {
+        stream.isConnecting = false;
+        stream.isConnected = false;
+        updateGridStreamStatus(streamId, 'disconnected', '未连接');
+        showGridLoading(streamId, false);
+        addLog('warning', `设备${streamId + 1}连接关闭`);
+        updateGridStats();
+        
+        if (stream.jmuxer) {
+          stream.jmuxer.destroy();
+          stream.jmuxer = null;
+        }
+      };
+
+      stream.ws.onmessage = (event) => {
+        const nalUnit = new Uint8Array(event.data);
+        stream.stats.dataReceived += nalUnit.byteLength;
+        stream.stats.frameCount++;
+        
+        stream.jmuxer.feed({
+          video: nalUnit,
+          duration: 0,
+        });
+        updateGridStats();
+      };
+
+      // 连接超时
+      setTimeout(() => {
+        if (stream.isConnecting) {
+          addLog('error', `设备${streamId + 1}连接超时`);
+          stream.ws.close();
+          stream.isConnecting = false;
+          updateGridStreamStatus(streamId, 'error', '连接超时');
+          showGridLoading(streamId, false);
+        }
+      }, 10000);
+    }
+
+    // 断开网格流连接
+    function disconnectGridStream(streamId) {
+      const stream = gridStreams[streamId];
+      
+      stream.isConnecting = false;
+      stream.isConnected = false;
+      
+      if (stream.ws) {
+        stream.ws.close();
+        stream.ws = null;
+      }
+      if (stream.jmuxer) {
+        stream.jmuxer.destroy();
+        stream.jmuxer = null;
+      }
+      
+      // 重置统计
+      stream.stats = {
+        dataReceived: 0,
+        connectionStartTime: null,
+        frameCount: 0,
+        lastFrameTime: Date.now()
+      };
+      
+      updateGridStreamStatus(streamId, 'disconnected', '未连接');
+      showGridLoading(streamId, false);
+      addLog('info', `设备${streamId + 1}已断开连接`);
+      updateGridStats();
+    }
+
+    // 配置网格流
+    function configureGridStream(streamId) {
+      const stream = gridStreams[streamId];
+      const newDeviceCode = prompt('请输入设备编码:', stream.config.deviceCode);
+      if (newDeviceCode) {
+        stream.config.deviceCode = newDeviceCode;
+        addLog('info', `设备${streamId + 1}配置已更新: ${newDeviceCode}`);
+      }
+    }
+
+    // 更新网格流状态
+    function updateGridStreamStatus(streamId, status, message) {
+      const statusElement = document.querySelector(`[data-stream="${streamId}"]`);
+      if (statusElement) {
+        statusElement.textContent = message;
+        statusElement.className = `connection-status ${status}`;
+      }
+    }
+
+    // 显示/隐藏网格加载动画
+    function showGridLoading(streamId, show) {
+      const loadingElement = document.querySelector(`#gridPlayer${streamId}`).parentElement.querySelector('.grid-loading');
+      const placeholderElement = document.querySelector(`#gridPlayer${streamId}`).parentElement.querySelector('.grid-placeholder');
+      
+      if (show) {
+        loadingElement.style.display = 'flex';
+        placeholderElement.style.display = 'none';
+      } else {
+        loadingElement.style.display = 'none';
+        if (!gridStreams[streamId].isConnected) {
+          placeholderElement.style.display = 'flex';
+        }
+      }
+    }
+
+    // 更新网格统计信息
+    function updateGridStats() {
+      const activeConnections = gridStreams.filter(stream => stream.isConnected).length;
+      const totalData = gridStreams.reduce((sum, stream) => sum + stream.stats.dataReceived, 0);
+      const averageFrameRate = Math.round(gridStreams.reduce((sum, stream) => sum + stream.stats.frameCount, 0) / maxStreams);
+      
+      document.getElementById('activeConnections').textContent = `${activeConnections}/${maxStreams}`;
+      document.getElementById('totalDataReceived').textContent = `${(totalData / 1024).toFixed(1)} KB`;
+      document.getElementById('averageFrameRate').textContent = `${averageFrameRate} FPS`;
+    }
+
+    // 连接所有流
+    function connectAllStreams() {
+      // 应用模板配置到所有设备
+      const templateConfig = {
+        serverIp: document.getElementById('templateServerIp').value,
+        corpId: document.getElementById('templateCorpId').value,
+        watcherId: document.getElementById('templateWatcherId').value,
+        watcherNm: document.getElementById('templateWatcherNm').value,
+        scaling: document.getElementById('templateScaling').value,
+        streamType: document.getElementById('templateStreamType').value
+      };
+
+      gridStreams.forEach((stream, index) => {
+        Object.assign(stream.config, templateConfig);
+        stream.config.deviceCode = `ZHDP5828375502`; // 自动生成设备编码
+        
+        if (!stream.isConnected && !stream.isConnecting) {
+          setTimeout(() => connectGridStream(index), index * 500); // 错开连接时间
+        }
+      });
+      
+      addLog('info', '开始连接所有设备...');
+    }
+
+    // 断开所有流连接
+    function disconnectAllStreams() {
+      gridStreams.forEach((stream, index) => {
+        if (stream.isConnected || stream.isConnecting) {
+          disconnectGridStream(index);
+        }
+      });
+      addLog('info', '已断开所有设备连接');
+    }
+
+    // 自动配置设备
+    function autoConfigureDevices() {
+      gridStreams.forEach((stream, index) => {
+        stream.config.deviceCode = `ZHDP5828375${500 + index}`;
+      });
+      addLog('info', '已自动配置所有设备编码');
+    }
+
+    // 添加新设备流
+    function addNewStream() {
+      if (currentViewMode !== 'grid') {
+        addLog('warning', '请先切换到9宫格模式');
+        return;
+      }
+      
+      if (maxStreams >= 9) {
+        addLog('warning', '已达到最大设备数量限制(9个)');
+        return;
+      }
+      
+      // 这个功能暂时保留，因为我们已经初始化了9个流
+      addLog('info', '9宫格模式已包含所有9个设备位置');
+    }
+
+    // 移除最后一个设备
+    function removeLastStream() {
+      if (currentViewMode !== 'grid') {
+        addLog('warning', '请先切换到9宫格模式');
+        return;
+      }
+      
+      // 断开最后一个连接的设备
+      for (let i = maxStreams - 1; i >= 0; i--) {
+        if (gridStreams[i].isConnected || gridStreams[i].isConnecting) {
+          disconnectGridStream(i);
+          addLog('info', `已移除设备${i + 1}`);
+          break;
+        }
+      }
+    }
+
+    // 单视图模式的原有函数
+    function updateButtonStates() {
+      const connectBtn = document.getElementById('connectBtn');
+      const disconnectBtn = document.getElementById('disconnectBtn');
+      
+      if (isConnecting || (singleWs && singleWs.readyState === WebSocket.OPEN)) {
+        connectBtn.disabled = true;
+        connectBtn.innerHTML = isConnecting ? 
+          '<i class="fas fa-spinner fa-spin"></i> 连接中...' : 
+          '<i class="fas fa-check"></i> 已连接';
+        connectBtn.classList.remove('btn-primary');
+        connectBtn.classList.add('btn-disabled');
+        
+        disconnectBtn.disabled = false;
+        disconnectBtn.classList.remove('btn-disabled');
+      } else {
+        connectBtn.disabled = false;
+        connectBtn.innerHTML = '<i class="fas fa-plug"></i> 连接';
+        connectBtn.classList.remove('btn-disabled');
+        connectBtn.classList.add('btn-primary');
+        
+        disconnectBtn.disabled = true;
+        disconnectBtn.classList.add('btn-disabled');
+      }
+    }
+
+    function updateConnectionStatus(status, message) {
+      const statusDot = document.getElementById('statusDot');
+      const statusText = document.getElementById('statusText');
+      
+      statusDot.className = `status-dot ${status}`;
+      statusText.textContent = message;
+      updateButtonStates();
+    }
+
+    function addLog(type, message) {
+      const logContainer = document.getElementById('logContainer');
+      const logItem = document.createElement('div');
+      const timestamp = new Date().toLocaleTimeString();
+      
+      logItem.className = `log-item log-${type}`;
+      logItem.innerHTML = `
+        <span class="log-time">${timestamp}</span>
+        <span class="log-message">${message}</span>
+      `;
+      
+      logContainer.appendChild(logItem);
+      logContainer.scrollTop = logContainer.scrollHeight;
+      
+      // 限制日志数量
+      if (logContainer.children.length > 100) {
+        logContainer.removeChild(logContainer.firstChild);
+      }
+    }
+
+    function updateStats() {
+      if (currentViewMode === 'single') {
+        // 更新数据接收量
+        document.getElementById('dataReceived').textContent = 
+          (singleStats.dataReceived / 1024).toFixed(1) + ' KB';
+        
+        // 更新连接时长
+        if (singleStats.connectionStartTime) {
+          const elapsed = Math.floor((Date.now() - singleStats.connectionStartTime) / 1000);
+          const minutes = Math.floor(elapsed / 60);
+          const seconds = elapsed % 60;
+          document.getElementById('connectionTime').textContent = 
+            `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+        
+        // 更新帧率
+        const now = Date.now();
+        if (now - singleStats.lastFrameTime > 1000) {
+          document.getElementById('frameRate').textContent = singleStats.frameCount + ' FPS';
+          singleStats.frameCount = 0;
+          singleStats.lastFrameTime = now;
+        }
+        
+        // 更新鼠标事件数
+        document.getElementById('mouseEvents').textContent = singleStats.mouseEvents;
+      }
+    }
+
+    function connectSingle() {
+      if (isConnecting || (singleWs && singleWs.readyState === WebSocket.OPEN)) {
+        addLog('warning', '连接正在进行中或已连接，请勿重复点击');
+        return;
+      }
+
+      if (singleWs && singleWs.readyState !== WebSocket.CLOSED) {
+        addLog('info', '清理旧连接...');
+        singleWs.close();
+        singleWs = null;
+      }
+      
+      if (singleJmuxer) {
+        singleJmuxer.destroy();
+        singleJmuxer = null;
+      }
+
+      const serverIp = document.getElementById('serverIp').value;
+      const corpId = document.getElementById('corpId').value;
+      const deviceCode = document.getElementById('deviceCode').value;
+      const watcherId = document.getElementById('watcherId').value;
+      const watcherNm = document.getElementById('watcherNm').value;
+      const scaling = document.getElementById('scaling').value;
+      const streamType = document.getElementById('streamType').value;
+      
+      if (!serverIp || !corpId || !deviceCode || !watcherId || !watcherNm) {
+        addLog('error', '请填写完整的连接参数');
+        return;
+      }
+      
+      isConnecting = true;
+      addLog('info', `开始连接到远程服务器... (${streamType === '1' ? '桌面流' : '摄像头流'})`);
+      updateConnectionStatus('connecting', '连接中...');
+      
+      document.getElementById('placeholderOverlay').style.display = 'none';
+      document.getElementById('loadingOverlay').style.display = 'flex';
+      
+      const wsUrl = `ws://${serverIp}/wsflow/ServerHub?corpId=${corpId}&deviceCode=${deviceCode}&type=${streamType}&Scaling=${scaling}&watcherId=${watcherId}&watcherNm=${watcherNm}`;
+      document.getElementById('currentUrl').textContent = `当前连接: ${wsUrl}`;
+      
+      singleJmuxer = new JMuxer({
+        node: 'player',
+        mode: 'video',
+      });
+
+      singleWs = new WebSocket(wsUrl);
+      singleWs.binaryType = 'arraybuffer';
+
+      singleWs.onopen = () => {
+        console.log('WebSocket连接成功');
+        isConnecting = false;
+        updateConnectionStatus('connected', '已连接');
+        addLog('success', `WebSocket连接成功 (${streamType === '1' ? '桌面流' : '摄像头流'})`);
+        document.getElementById('loadingOverlay').style.display = 'none';
+        singleStats.connectionStartTime = Date.now();
+        
+        if (!window.statsInterval) {
+          window.statsInterval = setInterval(updateStats, 1000);
+        }
+      };
+
+      singleWs.onerror = (error) => {
+        console.error('WebSocket连接失败:', error);
+        isConnecting = false;
+        updateConnectionStatus('error', '连接错误');
+        addLog('error', 'WebSocket连接失败');
+        document.getElementById('loadingOverlay').style.display = 'none';
+        document.getElementById('placeholderOverlay').style.display = 'flex';
+      };
+
+      singleWs.onclose = (event) => {
+        console.error('WebSocket连接关闭:', event);
+        isConnecting = false;
+        updateConnectionStatus('disconnected', '连接已断开');
+        addLog('warning', `WebSocket连接关闭 (代码: ${event.code})`);
+        document.getElementById('loadingOverlay').style.display = 'none';
+        document.getElementById('placeholderOverlay').style.display = 'flex';
+        if (singleJmuxer) {
+          singleJmuxer.destroy();
+          singleJmuxer = null;
+        }
+      };
+
+      singleWs.onmessage = (event) => {
+        const nalUnit = new Uint8Array(event.data);
+        singleStats.dataReceived += nalUnit.byteLength;
+        singleStats.frameCount++;
+        
+        singleJmuxer.feed({
+          video: nalUnit,
+          duration: 0,
+        });
+      };
+
+      setTimeout(() => {
+        if (isConnecting && singleWs && singleWs.readyState === WebSocket.CONNECTING) {
+          addLog('error', '连接超时，自动断开');
+          singleWs.close();
+          isConnecting = false;
+          updateConnectionStatus('error', '连接超时');
+          document.getElementById('loadingOverlay').style.display = 'none';
+          document.getElementById('placeholderOverlay').style.display = 'flex';
+        }
+      }, 10000);
+    }
+
+    function disconnectSingle() {
+      isConnecting = false;
+      
+      if (singleWs) {
+        singleWs.close();
+        singleWs = null;
+      }
+      if (singleJmuxer) {
+        singleJmuxer.destroy();
+        singleJmuxer = null;
+      }
+      
+      if (window.statsInterval) {
+        clearInterval(window.statsInterval);
+        window.statsInterval = null;
+      }
+      
+      const videoElement = document.getElementById('player');
+      videoElement.src = '';
+      videoElement.load();
+      
+      document.getElementById('loadingOverlay').style.display = 'none';
+      document.getElementById('placeholderOverlay').style.display = 'flex';
+      
+      singleStats = {
+        dataReceived: 0,
+        connectionStartTime: null,
+        frameCount: 0,
+        mouseEvents: 0,
+        lastFrameTime: Date.now()
+      };
+      
+      document.getElementById('dataReceived').textContent = '0 KB';
+      document.getElementById('connectionTime').textContent = '00:00';
+      document.getElementById('frameRate').textContent = '0 FPS';
+      document.getElementById('mouseEvents').textContent = '0';
+      document.getElementById('resolution').textContent = '分辨率: --';
+      document.getElementById('currentUrl').textContent = '当前连接: 未配置';
+      
+      updateConnectionStatus('disconnected', '未连接');
+      addLog('info', '已断开连接');
+    }
+
+    function clearLogs() {
+      document.getElementById('logContainer').innerHTML = '';
+    }
+
+    function updateCurrentUrl() {
+      const serverIp = document.getElementById('serverIp').value;
+      const corpId = document.getElementById('corpId').value;
+      const deviceCode = document.getElementById('deviceCode').value;
+      const watcherId = document.getElementById('watcherId').value;
+      const watcherNm = document.getElementById('watcherNm').value;
+      const scaling = document.getElementById('scaling').value;
+      const streamType = document.getElementById('streamType').value;
+      
+      if (serverIp && corpId && deviceCode && watcherId && watcherNm) {
+        const wsUrl = `ws://${serverIp}/wsflow/ServerHub?corpId=${corpId}&deviceCode=${deviceCode}&type=${streamType}&Scaling=${scaling}&watcherId=${watcherId}&watcherNm=${watcherNm}`;
+        const streamTypeText = streamType === '1' ? '桌面流' : '摄像头流';
+        document.getElementById('currentUrl').textContent = `预览URL (${streamTypeText}): ${wsUrl}`;
+      } else {
+        document.getElementById('currentUrl').textContent = '当前连接: 请完善配置参数';
+      }
+    }
+
+    // 单视图视频元素事件监听
+    function setupSinglePlayerEventListeners() {
+      const videoElement = document.getElementById('player');
+      
+      videoElement.addEventListener('mousemove', (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        
+        if (singleWs && singleWs.readyState === WebSocket.OPEN) {
+          singleWs.send(JSON.stringify({
+            Button: 0,
+            MousePoint: {
+              X: (event.offsetX / videoElement.offsetWidth) * 65535,
+              Y: (event.offsetY / videoElement.offsetHeight) * 65535,
+            },
+            Input: 2,
+            Delta: 0,
+            Key: 0,
+          }));
+        }
+      });
+
+      videoElement.addEventListener('mousedown', (event) => {
+        videoElement.focus();
+        singleStats.mouseEvents++;
+        
+        event.stopPropagation();
+        event.preventDefault();
+        
+        if (singleWs && singleWs.readyState === WebSocket.OPEN) {
+          singleWs.send(JSON.stringify({
+            Button: event.button,
+            MousePoint: {
+              X: (event.clientX / videoElement.offsetWidth) * 65535,
+              Y: (event.clientY / videoElement.offsetHeight) * 65535,
+            },
+            Input: 1,
+            Delta: 0,
+            Key: 0,
+          }));
+        }
+        addLog('debug', `鼠标按下: 按钮${event.button}`);
+      });
+
+      videoElement.addEventListener('mouseup', (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        
+        if (singleWs && singleWs.readyState === WebSocket.OPEN) {
+          singleWs.send(JSON.stringify({
+            Button: event.button,
+            MousePoint: {
+              X: (event.offsetX / videoElement.offsetWidth) * 65535,
+              Y: (event.offsetY / videoElement.offsetHeight) * 65535,
+            },
+            Input: 0,
+            Delta: 0,
+            Key: 0,
+          }));
+        }
+      });
+
+      videoElement.addEventListener('wheel', (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        
+        if (singleWs && singleWs.readyState === WebSocket.OPEN) {
+          singleWs.send(JSON.stringify({
+            Button: 1,
+            MousePoint: { X: 0, Y: 0 },
+            Input: 3,
+            Delta: event.deltaY,
+            Key: 0,
+          }));
+        }
+        addLog('debug', `滚轮事件: ${event.deltaY}`);
+      });
+
+      videoElement.addEventListener('keydown', (event) => {
+        const vkCode = getVKCode(event.key);
+        if (singleWs && singleWs.readyState === WebSocket.OPEN) {
+          singleWs.send(JSON.stringify({
+            Button: 0,
+            MousePoint: { X: 0, Y: 0 },
+            Input: 4,
+            Delta: 0,
+            Key: vkCode,
+          }));
+        }
+        addLog('debug', `键盘按下: ${event.key}`);
+        event.stopPropagation();
+        event.preventDefault();
+      });
+
+      videoElement.addEventListener('keyup', (event) => {
+        const vkCode = getVKCode(event.key);
+        if (singleWs && singleWs.readyState === WebSocket.OPEN) {
+          singleWs.send(JSON.stringify({
+            Button: 0,
+            MousePoint: { X: 0, Y: 0 },
+            Input: 5,
+            Delta: 0,
+            Key: vkCode,
+          }));
+        }
+        event.stopPropagation();
+        event.preventDefault();
+      });
+
+      videoElement.addEventListener('contextmenu', (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+      });
+
+      videoElement.addEventListener('loadedmetadata', () => {
+        const resolution = `${videoElement.videoWidth}x${videoElement.videoHeight}`;
+        document.getElementById('resolution').textContent = `分辨率: ${resolution}`;
+        addLog('info', `视频加载完成: ${resolution}`);
+      });
+    }
+
+    // 页面初始化
+    document.addEventListener('DOMContentLoaded', () => {
+      // 初始化网格流数据
+      initializeGridStreams();
+      
+      // 设置单视图输入框事件监听
+      const inputs = ['serverIp', 'corpId', 'deviceCode', 'watcherId', 'watcherNm', 'scaling', 'streamType'];
+      inputs.forEach(id => {
+        const element = document.getElementById(id);
+        if (element.tagName === 'SELECT') {
+          element.addEventListener('change', updateCurrentUrl);
+        } else {
+          element.addEventListener('input', updateCurrentUrl);
+        }
+      });
+      
+      // 设置单视图播放器事件监听
+      setupSinglePlayerEventListeners();
+      
+      // 初始化显示
+      updateCurrentUrl();
+      updateButtonStates();
+      
+      addLog('info', '页面加载完成，请选择视图模式并配置连接参数');
+    });
+
+    // 页面加载完成
+    window.onload = () => {
+      const videoElement = document.getElementById('player');
+      videoElement.focus();
+      addLog('info', '远程桌面控制系统已就绪');
+    };
+  </script>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #333;
+    }
+
+    /* 头部样式 */
+    .header {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-content {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #2d3748;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 1rem;
+    }
+
+    /* 按钮样式 */
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.3s ease;
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #4CAF50, #45a049);
+      color: white;
+      box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+    }
+
+    .btn-secondary {
+      background: linear-gradient(135deg, #f44336, #d32f2f);
+      color: white;
+      box-shadow: 0 4px 15px rgba(244, 67, 54, 0.3);
+    }
+
+    .btn-secondary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(244, 67, 54, 0.4);
+    }
+
+    .btn-info {
+      background: linear-gradient(135deg, #2196F3, #1976D2);
+      color: white;
+      box-shadow: 0 4px 15px rgba(33, 150, 243, 0.3);
+    }
+
+    .btn-info:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(33, 150, 243, 0.4);
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #FF9800, #F57C00);
+      color: white;
+      box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3);
+    }
+
+    .btn-success:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(255, 152, 0, 0.4);
+    }
+
+    .btn-warning {
+      background: linear-gradient(135deg, #9C27B0, #7B1FA2);
+      color: white;
+      box-shadow: 0 4px 15px rgba(156, 39, 176, 0.3);
+    }
+
+    .btn-warning:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(156, 39, 176, 0.4);
+    }
+
+    .btn-disabled {
+      background: #9e9e9e !important;
+      color: #666 !important;
+      cursor: not-allowed !important;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+
+    .btn-small {
+      padding: 0.5rem 1rem;
+      font-size: 0.8rem;
+      background: #6c757d;
+      color: white;
+    }
+
+    .btn-small:hover {
+      background: #5a6268;
+    }
+
+    /* 主容器 */
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    /* 单视图模式样式 */
+    .single-view .main-grid {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 2rem;
+      min-height: calc(100vh - 140px);
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .main-content {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      min-height: 100%;
+    }
+
+    .config-panel {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      padding: 1.5rem;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+      height: fit-content;
+    }
+
+    .config-card h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .config-form {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .config-actions {
+      display: flex;
+      gap: 1rem;
+    }
+
+    .config-actions .btn {
+      flex: 1;
+      justify-content: center;
+    }
+
+    .config-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .config-item label {
+      font-weight: 600;
+      color: #4a5568;
+      font-size: 0.85rem;
+    }
+
+    .config-item input,
+    .config-item select {
+      padding: 0.75rem;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      transition: all 0.3s ease;
+      background: white;
+    }
+
+    .config-item input:focus,
+    .config-item select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    /* 状态卡片 */
+    .status-card {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      padding: 1.5rem;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+      height: fit-content;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .status-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.connecting {
+      background: #ff9800;
+      box-shadow: 0 0 10px rgba(255, 152, 0, 0.5);
+    }
+
+    .status-dot.connected {
+      background: #4CAF50;
+      box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+    }
+
+    .status-dot.disconnected {
+      background: #9e9e9e;
+    }
+
+    .status-dot.error {
+      background: #f44336;
+      box-shadow: 0 0 10px rgba(244, 67, 54, 0.5);
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.1); opacity: 0.7; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .status-text {
+      font-weight: 600;
+      font-size: 1rem;
+    }
+
+    .connection-info {
+      color: #555;
+      font-size: 0.8rem;
+      line-height: 1.6;
+      word-break: break-all;
+    }
+
+    /* 统计网格 */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.75rem;
+    }
+
+    .stat-card {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 10px;
+      padding: 1rem;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      transition: transform 0.3s ease;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+    }
+
+    .stat-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+
+    .stat-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .stat-value {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #2d3748;
+      margin-bottom: 0.2rem;
+      line-height: 1;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: #666;
+      font-weight: 500;
+    }
+
+    /* 播放器容器 */
+    .player-container {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      padding: 1.5rem;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+      flex: 1;
+    }
+
+    .player-wrapper {
+      position: relative;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
+      height: 400px;
+    }
+
+    #player {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: crosshair;
+      object-fit: contain;
+      background: #000;
+    }
+
+    #player:focus {
+      outline: 2px solid #667eea;
+    }
+
+    #player::-webkit-media-controls {
+      display: none !important;
+    }
+
+    /* 9宫格视图样式 */
+    .grid-view {
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+
+    .grid-container {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .grid-player {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      padding: 1rem;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+      aspect-ratio: 16/9;
+    }
+
+    .grid-player-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
+    }
+
+    .grid-player video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+      cursor: crosshair;
+    }
+
+    .grid-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 5;
+    }
+
+    .grid-placeholder {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      font-size: 0.9rem;
+    }
+
+    .grid-placeholder i {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      opacity: 0.7;
+    }
+
+    .grid-loading {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+    }
+
+    .mini-spinner {
+      width: 30px;
+      height: 30px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-top: 3px solid white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .grid-controls {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+      padding: 0.75rem;
+      color: white;
+      font-size: 0.75rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .grid-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .device-name {
+      font-weight: 600;
+    }
+
+    .connection-status {
+      font-size: 0.7rem;
+      opacity: 0.8;
+    }
+
+    .connection-status.connected {
+      color: #4CAF50;
+    }
+
+    .connection-status.connecting {
+      color: #FF9800;
+    }
+
+    .connection-status.disconnected {
+      color: #9e9e9e;
+    }
+
+    .connection-status.error {
+      color: #f44336;
+    }
+
+    .grid-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .grid-btn {
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      transition: all 0.3s ease;
+    }
+
+    .grid-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: scale(1.1);
+    }
+
+    .grid-btn.connect-btn:hover {
+      background: rgba(76, 175, 80, 0.8);
+    }
+
+    .grid-btn.disconnect-btn:hover {
+      background: rgba(244, 67, 54, 0.8);
+    }
+
+    .grid-btn.config-btn:hover {
+      background: rgba(33, 150, 243, 0.8);
+    }
+
+    /* 网格控制面板 */
+    .grid-control-panel {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      padding: 2rem;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+    }
+
+    .grid-config h3 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .template-form {
+      margin-bottom: 2rem;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .form-group label {
+      font-weight: 600;
+      color: #4a5568;
+      font-size: 0.85rem;
+    }
+
+    .form-group input,
+    .form-group select {
+      padding: 0.75rem;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      transition: all 0.3s ease;
+      background: white;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .grid-actions {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .grid-actions .btn {
+      flex: 1;
+      justify-content: center;
+    }
+
+    .grid-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2rem;
+      padding: 1.5rem;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 10px;
+      color: white;
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+
+    .stat-item .stat-label {
+      display: block;
+      font-size: 0.85rem;
+      opacity: 0.8;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-item .stat-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    /* 占位符覆盖层 */
+    .placeholder-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      z-index: 5;
+    }
+
+    .placeholder-content {
+      text-align: center;
+    }
+
+    .placeholder-icon {
+      font-size: 4rem;
+      margin-bottom: 1rem;
+      opacity: 0.7;
+    }
+
+    .placeholder-content p {
+      font-size: 1.1rem;
+      opacity: 0.9;
+    }
+
+    /* 加载覆盖层 */
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      z-index: 10;
+      display: none;
+    }
+
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-top: 4px solid white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 1rem;
+    }
+
+    /* 播放器控制信息 */
+    .player-controls {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
+      padding: 1rem;
+      color: white;
+      font-size: 0.85rem;
+    }
+
+    .control-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* 日志面板 */
+    .log-panel {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+      height: 250px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .log-header {
+      padding: 1rem 1.5rem;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .log-header h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .log-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.75rem;
+      line-height: 1.4;
+    }
+
+    .log-item {
+      margin-bottom: 0.5rem;
+      padding: 0.5rem;
+      border-radius: 6px;
+      border-left: 3px solid;
+    }
+
+    .log-info {
+      background: #e3f2fd;
+      border-left-color: #2196f3;
+      color: #1565c0;
+    }
+
+    .log-success {
+      background: #e8f5e8;
+      border-left-color: #4caf50;
+      color: #2e7d32;
+    }
+
+    .log-warning {
+      background: #fff3e0;
+      border-left-color: #ff9800;
+      color: #ef6c00;
+    }
+
+    .log-error {
+      background: #ffebee;
+      border-left-color: #f44336;
+      color: #c62828;
+    }
+
+    .log-debug {
+      background: #f3e5f5;
+      border-left-color: #9c27b0;
+      color: #7b1fa2;
+    }
+
+    .log-time {
+      font-weight: 600;
+      margin-right: 0.5rem;
+    }
+
+    /* 响应式设计 */
+    @media (max-width: 1400px) {
+      .grid-container {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      
+      .form-row {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 1200px) {
+      .single-view .main-grid {
+        grid-template-columns: 280px 1fr;
+      }
+      
+      .grid-stats {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 968px) {
+      .single-view .main-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+      }
+
+      .container {
+        padding: 1rem;
+      }
+
+      .sidebar {
+        order: 2;
+      }
+
+      .main-content {
+        order: 1;
+      }
+
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .player-wrapper {
+        height: 300px;
+      }
+      
+      .grid-container {
+        grid-template-columns: 1fr;
+      }
+      
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+      
+      .grid-actions {
+        flex-direction: column;
+      }
+      
+      .grid-stats {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .header-content {
+        flex-direction: column;
+        gap: 1rem;
+        text-align: center;
+      }
+
+      .header-actions {
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .stat-card {
+        padding: 0.75rem;
+      }
+
+      .control-info {
+        flex-direction: column;
+        gap: 0.5rem;
+        text-align: center;
+      }
+
+      .log-panel {
+        height: 200px;
+      }
+      
+      .grid-control-panel {
+        padding: 1rem;
+      }
+    }
+
+    /* 滚动条样式 */
+    .log-container::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .log-container::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 4px;
+    }
+
+    .log-container::-webkit-scrollbar-thumb {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border-radius: 4px;
+    }
+
+    .log-container::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(135deg, #5a6fd8, #6a42a6);
+    }
+
+    /* 动画和过渡效果 */
+    .grid-player {
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .grid-player:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.15);
+    }
+
+    /* 聚焦状态 */
+    .grid-player video:focus {
+      outline: 2px solid #667eea;
+      outline-offset: 2px;
+    }
+
+    /* 工具提示样式 */
+    .grid-btn[title] {
+      position: relative;
+    }
+
+    .grid-btn[title]:hover::after {
+      content: attr(title);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      white-space: nowrap;
+      z-index: 1000;
+    }
+  </style>
+</body>
+
+</html>
