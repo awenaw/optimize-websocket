@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket连接</title>
+</head>
+<body>
+    <h3>WebSocket配置</h3>
+    <div>
+        <label>服务器地址:</label><br>
+        <input type="text" id="serverUrl" value="ws://192.168.3.233/wsflow/ServerHub" style="width: 400px;">
+    </div>
+    <br>
+    <div>
+        <label>corpId:</label><br>
+        <input type="text" id="corpId" value="00000204">
+    </div>
+    <br>
+    <div>
+        <label>deviceCode:</label><br>
+        <input type="text" id="deviceCode" value="ZHDP5828375502">
+    </div>
+    <br>
+    <div>
+        <label>type:</label><br>
+        <input type="text" id="type" value="2">
+    </div>
+    <br>
+    <div>
+        <label>Scaling:</label><br>
+        <input type="text" id="Scaling" value="1">
+    </div>
+    <br>
+    <div>
+        <label>watcherId:</label><br>
+        <input type="text" id="watcherId" value="233">
+    </div>
+    <br>
+    <div>
+        <label>watcherNm:</label><br>
+        <input type="text" id="watcherNm" value="波波">
+    </div>
+    <br>
+    <button onclick="connectWebSocket()">连接</button>
+    <button onclick="disconnectWebSocket()">断开连接</button>
+    <br><br>
+    
+    <h3>WebSocket连接状态</h3>
+    <div id="status">未连接</div>
+    
+    <h3>接收到的消息</h3>
+    <div id="messages"></div>
+
+    <script>
+        let ws = null;
+        
+        // 状态显示元素
+        const statusDiv = document.getElementById('status');
+        const messagesDiv = document.getElementById('messages');
+        
+        // 连接WebSocket函数
+        function connectWebSocket() {
+            // 如果已经连接，先断开
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            }
+            
+            // 获取输入框的值
+            const serverUrl = document.getElementById('serverUrl').value;
+            const corpId = document.getElementById('corpId').value;
+            const deviceCode = document.getElementById('deviceCode').value;
+            const type = document.getElementById('type').value;
+            const Scaling = document.getElementById('Scaling').value;
+            const watcherId = document.getElementById('watcherId').value;
+            const watcherNm = encodeURIComponent(document.getElementById('watcherNm').value);
+            
+            // 构建完整的WebSocket URL
+            const wsUrl = `${serverUrl}?corpId=${corpId}&deviceCode=${deviceCode}&type=${type}&Scaling=${Scaling}&watcherId=${watcherId}&watcherNm=${watcherNm}`;
+            
+            console.log('尝试连接:', wsUrl);
+            
+            // 创建WebSocket连接
+            ws = new WebSocket(wsUrl);
+            
+            setupWebSocketEvents();
+        }
+        
+        // 断开连接函数
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+            }
+        }
+        
+        // 设置WebSocket事件处理
+        function setupWebSocketEvents() {
+            // 连接打开时
+            ws.onopen = function(event) {
+                console.log('WebSocket连接已打开');
+                statusDiv.textContent = '已连接';
+                statusDiv.style.color = 'green';
+                
+                // 打印连接信息
+                console.log('连接地址:', ws.url);
+                addMessage('连接成功: ' + new Date().toLocaleTimeString());
+            };
+            
+            // 接收消息时
+            ws.onmessage = function(event) {
+                console.log('收到消息:', event.data);
+                addMessage('收到消息: ' + event.data + ' (' + new Date().toLocaleTimeString() + ')');
+            };
+            
+            // 连接关闭时
+            ws.onclose = function(event) {
+                console.log('WebSocket连接已关闭');
+                statusDiv.textContent = '连接已关闭';
+                statusDiv.style.color = 'red';
+                addMessage('连接关闭: ' + new Date().toLocaleTimeString());
+            };
+            
+            // 发生错误时
+            ws.onerror = function(error) {
+                console.error('WebSocket错误:', error);
+                statusDiv.textContent = '连接错误';
+                statusDiv.style.color = 'red';
+                addMessage('连接错误: ' + new Date().toLocaleTimeString());
+            };
+        }
+        
+        // 添加消息到页面的函数
+        function addMessage(message) {
+            const messageElement = document.createElement('div');
+            messageElement.textContent = message;
+            messageElement.style.marginBottom = '5px';
+            messageElement.style.padding = '5px';
+            messageElement.style.border = '1px solid #ccc';
+            messagesDiv.appendChild(messageElement);
+            
+            // 滚动到底部
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+    </script>
+</body>
+</html>
