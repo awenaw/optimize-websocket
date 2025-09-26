@@ -23,6 +23,9 @@
         <button id="removeStreamBtn" class="btn btn-warning" onclick="removeLastStream()">
           <i class="fas fa-minus"></i> 移除设备
         </button>
+        <button id="fullscreenBtn" class="btn btn-info" onclick="toggleVideoFullscreen()">
+          <i class="fas fa-expand"></i> <span id="fullscreenText">视频全屏</span>
+        </button>
       </div>
     </div>
   </div>
@@ -147,6 +150,11 @@
                 <div class="control-info">
                   <span id="resolution">分辨率: --</span>
                   <span id="latency">延迟: -- ms</span>
+                </div>
+                <div class="video-controls">
+                  <button class="control-btn" onclick="toggleSingleVideoFullscreen()" title="视频全屏">
+                    <i class="fas fa-expand"></i>
+                  </button>
                 </div>
               </div>
             </div>
@@ -374,16 +382,8 @@
                 <button class="grid-btn config-btn" onclick="configureGridStream(${i})" title="配置设备">
                   <i class="fas fa-cog"></i>
                 </button>
-              </div>
-            </div>
-                <button class="grid-btn connect-btn" onclick="connectGridStream(${i})">
-                  <i class="fas fa-plug"></i>
-                </button>
-                <button class="grid-btn disconnect-btn" onclick="disconnectGridStream(${i})">
-                  <i class="fas fa-times"></i>
-                </button>
-                <button class="grid-btn config-btn" onclick="configureGridStream(${i})">
-                  <i class="fas fa-cog"></i>
+                <button class="grid-btn fullscreen-btn" onclick="toggleGridVideoFullscreen(${i})" title="视频全屏">
+                  <i class="fas fa-expand"></i>
                 </button>
               </div>
             </div>
@@ -393,6 +393,13 @@
         
         // 添加点击事件监听器
         addGridPlayerEventListeners(i);
+
+        // 添加双击全屏事件
+        const gridVideo = document.getElementById(`gridPlayer${i}`);
+        gridVideo.addEventListener('dblclick', (e) => {
+          e.preventDefault();
+          toggleGridVideoFullscreen(i);
+        });
       }
     }
 
@@ -1091,12 +1098,139 @@
       
       // 设置单视图播放器事件监听
       setupSinglePlayerEventListeners();
-      
+
+      // 添加视频全屏监听器
+      addVideoFullscreenListeners();
+
       // 初始化显示
       updateCurrentUrl();
       updateButtonStates();
       
       addLog('info', '页面加载完成，请选择视图模式并配置连接参数');
+    });
+
+    // 视频全屏功能
+    let currentFullscreenVideo = null;
+
+    // 单视图视频全屏
+    function toggleSingleVideoFullscreen() {
+      const videoElement = document.getElementById('player');
+      performVideoFullscreen(videoElement, '单视图');
+    }
+
+    // 九宫格视频全屏
+    function toggleGridVideoFullscreen(streamId) {
+      const videoElement = document.getElementById(`gridPlayer${streamId}`);
+      performVideoFullscreen(videoElement, `设备${streamId + 1}`);
+    }
+
+    // 通用视频全屏切换函数
+    function performVideoFullscreen(videoElement, videoName) {
+      if (!videoElement) {
+        addLog('error', '视频元素不存在');
+        return;
+      }
+
+      if (!document.fullscreenElement && !document.webkitFullscreenElement &&
+          !document.mozFullScreenElement && !document.msFullscreenElement) {
+        // 进入全屏
+        if (videoElement.requestFullscreen) {
+          videoElement.requestFullscreen().then(() => {
+            currentFullscreenVideo = videoElement;
+            addLog('info', `${videoName}视频已进入全屏模式`);
+          }).catch(err => {
+            addLog('error', `进入全屏失败: ${err.message}`);
+          });
+        } else if (videoElement.webkitRequestFullscreen) {
+          videoElement.webkitRequestFullscreen();
+          currentFullscreenVideo = videoElement;
+          addLog('info', `${videoName}视频已进入全屏模式`);
+        } else if (videoElement.msRequestFullscreen) {
+          videoElement.msRequestFullscreen();
+          currentFullscreenVideo = videoElement;
+          addLog('info', `${videoName}视频已进入全屏模式`);
+        } else if (videoElement.mozRequestFullScreen) {
+          videoElement.mozRequestFullScreen();
+          currentFullscreenVideo = videoElement;
+          addLog('info', `${videoName}视频已进入全屏模式`);
+        } else {
+          addLog('error', '浏览器不支持全屏功能');
+        }
+      } else {
+        // 退出全屏
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+          document.msExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+          document.mozCancelFullScreen();
+        }
+      }
+    }
+
+    // 顶部按钮的全屏功能（针对当前活跃的视频）
+    function toggleVideoFullscreen() {
+      if (currentViewMode === 'single') {
+        toggleSingleVideoFullscreen();
+      } else {
+        // 九宫格模式下，全屏第一个连接的视频
+        const connectedStream = gridStreams.find(stream => stream.isConnected);
+        if (connectedStream) {
+          toggleGridVideoFullscreen(connectedStream.id);
+        } else {
+          addLog('warning', '没有已连接的视频设备');
+        }
+      }
+    }
+
+    // 监听全屏状态变化
+    document.addEventListener('fullscreenchange', handleVideoFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleVideoFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleVideoFullscreenChange);
+    document.addEventListener('msfullscreenchange', handleVideoFullscreenChange);
+
+    function handleVideoFullscreenChange() {
+      const fullscreenBtn = document.getElementById('fullscreenBtn');
+      const fullscreenText = document.getElementById('fullscreenText');
+      const fullscreenIcon = fullscreenBtn.querySelector('i');
+
+      if (document.fullscreenElement || document.webkitFullscreenElement ||
+          document.mozFullScreenElement || document.msFullscreenElement) {
+        // 已进入全屏
+        fullscreenIcon.className = 'fas fa-compress';
+        fullscreenText.textContent = '退出视频全屏';
+      } else {
+        // 已退出全屏
+        fullscreenIcon.className = 'fas fa-expand';
+        fullscreenText.textContent = '视频全屏';
+        currentFullscreenVideo = null;
+        addLog('info', '已退出视频全屏模式');
+      }
+    }
+
+    // 双击视频进入全屏
+    function addVideoFullscreenListeners() {
+      // 单视图视频双击全屏
+      const singleVideo = document.getElementById('player');
+      if (singleVideo) {
+        singleVideo.addEventListener('dblclick', (e) => {
+          e.preventDefault();
+          toggleSingleVideoFullscreen();
+        });
+      }
+    }
+
+    // ESC键退出全屏
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'F11') {
+        event.preventDefault();
+        toggleVideoFullscreen();
+      }
+      if (event.key === 'Escape' && currentFullscreenVideo) {
+        addLog('info', 'ESC键退出视频全屏');
+      }
     });
 
     // 页面加载完成
@@ -1667,6 +1801,41 @@
       background: rgba(33, 150, 243, 0.8);
     }
 
+    .grid-btn.fullscreen-btn:hover {
+      background: rgba(156, 39, 176, 0.8);
+    }
+
+    /* 视频控制按钮样式 */
+    .video-controls {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .control-btn {
+      width: 32px;
+      height: 32px;
+      border: none;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(5px);
+    }
+
+    .control-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: scale(1.1);
+    }
+
+    .control-btn:hover {
+      background: rgba(156, 39, 176, 0.8);
+    }
+
     /* 网格控制面板 */
     .grid-control-panel {
       background: rgba(255, 255, 255, 0.95);
@@ -1916,6 +2085,48 @@
     .log-time {
       font-weight: 600;
       margin-right: 0.5rem;
+    }
+
+    /* 视频全屏模式样式 */
+    video:-webkit-full-screen,
+    video:-moz-full-screen,
+    video:-ms-fullscreen,
+    video:fullscreen {
+      width: 100vw !important;
+      height: 100vh !important;
+      object-fit: contain;
+      background: #000;
+    }
+
+    /* 全屏视频保持鼠标交互 */
+    video:-webkit-full-screen,
+    video:-moz-full-screen,
+    video:-ms-fullscreen,
+    video:fullscreen {
+      cursor: crosshair;
+    }
+
+    /* 全屏状态下的控制按钮提示 */
+    video:-webkit-full-screen::before,
+    video:-moz-full-screen::before,
+    video:-ms-fullscreen::before,
+    video:fullscreen::before {
+      content: "ESC 退出全屏 | 双击切换全屏";
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 14px;
+      z-index: 9999;
+      animation: fadeInOut 3s ease-in-out;
+    }
+
+    @keyframes fadeInOut {
+      0%, 100% { opacity: 0; }
+      20%, 80% { opacity: 1; }
     }
 
     /* 响应式设计 */
