@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket H.264转MP4</title>
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/util.js"></script>
+
+    <!-- 备选方案：如果FFmpeg加载失败，使用简单的H.264数据保存 -->
+    <style>
+        .fallback-warning {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 10px;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            margin: 10px 0;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h3>WebSocket配置</h3>
+    <div>
+        <label>服务器地址:</label><br>
+        <input type="text" id="serverUrl" value="ws://192.168.3.233/wsflow/ServerHub" style="width: 400px;">
+    </div>
+    <br>
+    <div>
+        <label>corpId:</label><br>
+        <input type="text" id="corpId" value="00000204">
+    </div>
+    <br>
+    <div>
+        <label>deviceCode:</label><br>
+        <input type="text" id="deviceCode" value="ZHDP5828375502">
+    </div>
+    <br>
+    <div>
+        <label>type:</label><br>
+        <input type="text" id="type" value="2">
+    </div>
+    <br>
+    <div>
+        <label>Scaling:</label><br>
+        <input type="text" id="Scaling" value="1">
+    </div>
+    <br>
+    <div>
+        <label>watcherId:</label><br>
+        <input type="text" id="watcherId" value="233">
+    </div>
+    <br>
+    <div>
+        <label>watcherNm:</label><br>
+        <input type="text" id="watcherNm" value="波波">
+    </div>
+    <br>
+    <button onclick="connectWebSocket()">连接</button>
+    <button onclick="disconnectWebSocket()">断开连接</button>
+    <button onclick="startRecording()" id="recordBtn" disabled>开始录制</button>
+    <button onclick="stopRecording()" id="stopBtn" disabled>停止录制</button>
+    <button onclick="convertToMP4()" id="convertBtn" disabled>转换为MP4</button>
+    <br><br>
+
+    <h3>WebSocket连接状态</h3>
+    <div id="status">未连接</div>
+
+    <div id="fallbackWarning" class="fallback-warning">
+        FFmpeg加载失败，将使用备选方案保存原始H.264数据。您可以使用外部工具转换为MP4。
+    </div>
+
+    <h3>录制状态</h3>
+    <div id="recordStatus">未开始录制</div>
+    <div id="dataSize">接收数据大小: 0 bytes</div>
+
+    <h3>视频播放</h3>
+    <video id="videoPlayer" width="640" height="480" controls style="display:none;"></video>
+    <br>
+    <a id="downloadLink" style="display:none;">下载文件</a>
+
+    <h3>日志信息</h3>
+    <div id="messages" style="height: 200px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px;"></div>
+
+    <script>
+        let ws = null;
+        let ffmpeg = null;
+        let isRecording = false;
+        let h264DataChunks = [];
+        let totalDataSize = 0;
+        let ffmpegLoaded = false;
+
+        // DOM元素引用
+        const statusDiv = document.getElementById('status');
+        const messagesDiv = document.getElementById('messages');
+        const recordStatusDiv = document.getElementById('recordStatus');
+        const dataSizeDiv = document.getElementById('dataSize');
+        const recordBtn = document.getElementById('recordBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const convertBtn = document.getElementById('convertBtn');
+        const videoPlayer = document.getElementById('videoPlayer');
+        const downloadLink = document.getElementById('downloadLink');
+
+        // 初始化FFmpeg
+        async function initializeFFmpeg() {
+            try {
+                const { FFmpeg } = FFmpegWASM;
+                const { fetchFile, toBlobURL } = FFmpegUtil;
+
+                ffmpeg = new FFmpeg();
+
+                ffmpeg.on('log', ({ message }) => {
+                    console.log('FFmpeg:', message);
+                });
+
+                ffmpeg.on('progress', ({ progress }) => {
+                    console.log('FFmpeg Progress:', progress);
+                });
+
+                addMessage('正在加载FFmpeg...');
+
+                // 使用CDN加载核心文件
+                const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.4/dist/umd';
+                const coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript');
+                const wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm');
+
+                await ffmpeg.load({
+                    coreURL,
+                    wasmURL,
+                });
+
+                addMessage('FFmpeg加载完成');
+                ffmpegLoaded = true;
+                return true;
+            } catch (error) {
+                addMessage('FFmpeg加载失败: ' + error.message);
+                console.error('FFmpeg error:', error);
+                document.getElementById('fallbackWarning').style.display = 'block';
+                convertBtn.textContent = '保存H.264文件';
+                ffmpegLoaded = false;
+                return false;
+            }
+        }
+
+        // 页面加载时初始化FFmpeg
+        window.addEventListener('load', async () => {
+            await initializeFFmpeg();
+        });
+        
+        // 连接WebSocket函数
+        function connectWebSocket() {
+            // 如果已经连接，先断开
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            }
+            
+            // 获取输入框的值
+            const serverUrl = document.getElementById('serverUrl').value;
+            const corpId = document.getElementById('corpId').value;
+            const deviceCode = document.getElementById('deviceCode').value;
+            const type = document.getElementById('type').value;
+            const Scaling = document.getElementById('Scaling').value;
+            const watcherId = document.getElementById('watcherId').value;
+            const watcherNm = encodeURIComponent(document.getElementById('watcherNm').value);
+            
+            // 构建完整的WebSocket URL
+            const wsUrl = `${serverUrl}?corpId=${corpId}&deviceCode=${deviceCode}&type=${type}&Scaling=${Scaling}&watcherId=${watcherId}&watcherNm=${watcherNm}`;
+            
+            console.log('尝试连接:', wsUrl);
+            
+            // 创建WebSocket连接
+            ws = new WebSocket(wsUrl);
+            ws.binaryType = 'arraybuffer'; // 设置为二进制数据模式
+
+            setupWebSocketEvents();
+        }
+        
+        // 断开连接函数
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+            }
+        }
+        
+        // 设置WebSocket事件处理
+        function setupWebSocketEvents() {
+            // 连接打开时
+            ws.onopen = function(event) {
+                console.log('WebSocket连接已打开');
+                statusDiv.textContent = '已连接';
+                statusDiv.style.color = 'green';
+                recordBtn.disabled = false;
+
+                // 打印连接信息
+                console.log('连接地址:', ws.url);
+                addMessage('连接成功: ' + new Date().toLocaleTimeString());
+            };
+
+            // 接收消息时
+            ws.onmessage = function(event) {
+                if (event.data instanceof ArrayBuffer) {
+                    // 处理二进制H.264数据
+                    handleH264Data(event.data);
+                } else {
+                    // 处理文本消息
+                    console.log('收到文本消息:', event.data);
+                    addMessage('收到文本消息: ' + event.data + ' (' + new Date().toLocaleTimeString() + ')');
+                }
+            };
+            
+            // 连接关闭时
+            ws.onclose = function(event) {
+                console.log('WebSocket连接已关闭');
+                statusDiv.textContent = '连接已关闭';
+                statusDiv.style.color = 'red';
+                recordBtn.disabled = true;
+                stopBtn.disabled = true;
+                addMessage('连接关闭: ' + new Date().toLocaleTimeString());
+            };
+
+            // 发生错误时
+            ws.onerror = function(error) {
+                console.error('WebSocket错误:', error);
+                statusDiv.textContent = '连接错误';
+                statusDiv.style.color = 'red';
+                recordBtn.disabled = true;
+                stopBtn.disabled = true;
+                addMessage('连接错误: ' + new Date().toLocaleTimeString());
+            };
+        }
+
+        // 处理H.264数据
+        function handleH264Data(arrayBuffer) {
+            if (isRecording) {
+                const uint8Array = new Uint8Array(arrayBuffer);
+                h264DataChunks.push(uint8Array);
+                totalDataSize += uint8Array.length;
+
+                // 更新数据大小显示
+                dataSizeDiv.textContent = `接收数据大小: ${formatBytes(totalDataSize)}`;
+
+                addMessage(`接收到H.264数据: ${uint8Array.length} bytes`);
+            }
+        }
+
+        // 开始录制
+        function startRecording() {
+            if (!isRecording) {
+                isRecording = true;
+                h264DataChunks = [];
+                totalDataSize = 0;
+
+                recordStatusDiv.textContent = '正在录制...';
+                recordStatusDiv.style.color = 'red';
+                recordBtn.disabled = true;
+                stopBtn.disabled = false;
+                dataSizeDiv.textContent = '接收数据大小: 0 bytes';
+
+                addMessage('开始录制H.264数据');
+            }
+        }
+
+        // 停止录制
+        function stopRecording() {
+            if (isRecording) {
+                isRecording = false;
+
+                recordStatusDiv.textContent = '录制已停止';
+                recordStatusDiv.style.color = 'orange';
+                recordBtn.disabled = false;
+                stopBtn.disabled = true;
+                convertBtn.disabled = (h264DataChunks.length === 0);
+
+                addMessage(`录制结束，共收集 ${h264DataChunks.length} 个数据块，总大小: ${formatBytes(totalDataSize)}`);
+            }
+        }
+
+        // 转换为MP4或保存H.264文件
+        async function convertToMP4() {
+            if (h264DataChunks.length === 0) {
+                addMessage('没有H.264数据可处理');
+                return;
+            }
+
+            // 合并所有H.264数据块
+            const totalLength = h264DataChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+            const combinedData = new Uint8Array(totalLength);
+            let offset = 0;
+
+            for (const chunk of h264DataChunks) {
+                combinedData.set(chunk, offset);
+                offset += chunk.length;
+            }
+
+            if (ffmpegLoaded && ffmpeg) {
+                // 使用FFmpeg转换为MP4
+                try {
+                    addMessage('开始转换为MP4...');
+                    convertBtn.disabled = true;
+
+                    // 将数据写入FFmpeg文件系统
+                    await ffmpeg.writeFile('input.h264', combinedData);
+
+                    // 转换H.264到MP4
+                    await ffmpeg.exec([
+                        '-f', 'h264',
+                        '-i', 'input.h264',
+                        '-c:v', 'copy',
+                        '-f', 'mp4',
+                        'output.mp4'
+                    ]);
+
+                    // 读取输出文件
+                    const data = await ffmpeg.readFile('output.mp4');
+                    const mp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
+
+                    // 创建下载链接
+                    const url = URL.createObjectURL(mp4Blob);
+                    downloadLink.href = url;
+                    downloadLink.download = `video_${new Date().getTime()}.mp4`;
+                    downloadLink.textContent = '下载MP4文件';
+                    downloadLink.style.display = 'inline';
+
+                    // 在视频播放器中显示
+                    videoPlayer.src = url;
+                    videoPlayer.style.display = 'block';
+
+                    addMessage('MP4转换完成！');
+
+                } catch (error) {
+                    addMessage('转换失败: ' + error.message);
+                    console.error('转换错误:', error);
+                } finally {
+                    convertBtn.disabled = false;
+                }
+            } else {
+                // 备选方案：直接保存H.264文件
+                try {
+                    addMessage('保存H.264文件...');
+                    convertBtn.disabled = true;
+
+                    const h264Blob = new Blob([combinedData], { type: 'application/octet-stream' });
+                    const url = URL.createObjectURL(h264Blob);
+
+                    downloadLink.href = url;
+                    downloadLink.download = `video_${new Date().getTime()}.h264`;
+                    downloadLink.textContent = '下载H.264文件';
+                    downloadLink.style.display = 'inline';
+
+                    addMessage('H.264文件已准备下载！您可以使用FFmpeg命令行工具转换：');
+                    addMessage('ffmpeg -f h264 -i video.h264 -c:v copy output.mp4');
+
+                } catch (error) {
+                    addMessage('保存失败: ' + error.message);
+                    console.error('保存错误:', error);
+                } finally {
+                    convertBtn.disabled = false;
+                }
+            }
+        }
+
+        // 格式化字节大小
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        // 添加消息到页面的函数
+        function addMessage(message) {
+            const messageElement = document.createElement('div');
+            messageElement.textContent = message;
+            messageElement.style.marginBottom = '5px';
+            messageElement.style.padding = '5px';
+            messageElement.style.border = '1px solid #ccc';
+            messagesDiv.appendChild(messageElement);
+            
+            // 滚动到底部
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+    </script>
+</body>
+</html>
